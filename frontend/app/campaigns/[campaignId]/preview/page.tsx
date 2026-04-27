@@ -153,7 +153,11 @@ export default function CampaignPreviewPage({ params }: Props) {
                         cc_emails: msg.cc_emails.join(", ")
                       });
                     }}
-                    sx={{ cursor: "pointer" }}
+                    sx={{
+                      cursor: "pointer",
+                      opacity: msg.is_payload_immutable ? 0.75 : 1,
+                      backgroundColor: msg.is_payload_immutable ? "action.disabledBackground" : "inherit"
+                    }}
                   >
                     <TableCell>{msg.to_email || "-"}</TableCell>
                     <TableCell>{msg.status}</TableCell>

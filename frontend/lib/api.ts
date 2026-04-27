@@ -203,10 +203,35 @@ export type AssignmentDetailsResponse = {
     actor_id: string | null;
     created_at: string;
   }>;
+  touchpoints: Array<{
+    id: string;
+    channel: string;
+    kind: string;
+    payload: Record<string, unknown> | null;
+    actor_id: string | null;
+    created_at: string;
+  }>;
 };
 
-export async function fetchAssignments(): Promise<AssignmentsResponse> {
-  return request<AssignmentsResponse>("/assignments");
+export async function fetchAssignments(params?: {
+  page?: number;
+  page_size?: number;
+  project_id?: string;
+  target_object_id?: string;
+  status_filter?: string;
+  sort_by?: "created_at" | "deadline_at";
+  sort_dir?: "asc" | "desc";
+}): Promise<AssignmentsResponse> {
+  const search = new URLSearchParams();
+  if (params?.page) search.set("page", String(params.page));
+  if (params?.page_size) search.set("page_size", String(params.page_size));
+  if (params?.project_id) search.set("project_id", params.project_id);
+  if (params?.target_object_id) search.set("target_object_id", params.target_object_id);
+  if (params?.status_filter) search.set("status_filter", params.status_filter);
+  if (params?.sort_by) search.set("sort_by", params.sort_by);
+  if (params?.sort_dir) search.set("sort_dir", params.sort_dir);
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return request<AssignmentsResponse>(`/assignments${suffix}`);
 }
 
 export async function createAssignment(body: {
@@ -257,6 +282,17 @@ export async function patchAssignment(
       "Idempotency-Key": `patch-${assignmentId}-${Date.now()}`
     },
     body: JSON.stringify(body)
+  });
+}
+
+export async function revertAssignment(assignmentId: string, revision: number) {
+  return request<{ assignment_id: string; reverted: boolean; revision: number }>(`/assignments/${assignmentId}/revert`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `revert-${assignmentId}-${Date.now()}`
+    },
+    body: JSON.stringify({ revision })
   });
 }
 
@@ -411,6 +447,32 @@ export async function fetchProjects(): Promise<ProjectsResponse> {
   return request<ProjectsResponse>("/projects");
 }
 
+export async function createProject(payload: {
+  project_code: string;
+  project_name: string;
+  status?: string;
+}) {
+  return request<{ id: string; project_code: string }>("/projects", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `project-create-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function patchProject(projectId: string, payload: { project_name?: string; status?: string }) {
+  return request<{ id: string; updated: boolean }>(`/projects/${projectId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `project-patch-${projectId}-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 export type SettingsResponse = {
   quiet_days: string[];
   timezone: string;
@@ -429,6 +491,175 @@ export async function saveSettings(payload: Partial<SettingsResponse>) {
       "Idempotency-Key": `settings-${Date.now()}`
     },
     body: JSON.stringify(payload)
+  });
+}
+
+export type PersonItem = {
+  id: string;
+  full_name: string;
+  email: string;
+  telegram_user_id: string | null;
+  phone: string;
+  role: string;
+  manager_person_id: string | null;
+  is_active: boolean;
+};
+
+export type PeopleResponse = {
+  items: PersonItem[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export async function fetchPeople(): Promise<PeopleResponse> {
+  return request<PeopleResponse>("/people");
+}
+
+export async function createPerson(payload: {
+  full_name: string;
+  email: string;
+  telegram_user_id?: string;
+  phone: string;
+  role?: string;
+  manager_person_id?: string;
+}) {
+  return request<{ id: string; created: boolean }>("/people", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `person-create-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function patchPerson(
+  personId: string,
+  payload: Partial<{
+    full_name: string;
+    email: string;
+    telegram_user_id: string;
+    phone: string;
+    role: string;
+    manager_person_id: string | null;
+    is_active: boolean;
+  }>
+) {
+  return request<{ id: string; updated: boolean }>(`/people/${personId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `person-patch-${personId}-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export type TemplateItem = {
+  id: string;
+  name: string;
+  title_template: string;
+  description: string | null;
+  default_deadline_days: number;
+  verification_policy: Record<string, unknown>;
+  escalation_policy: Record<string, unknown>;
+  calendar_policy: Record<string, unknown>;
+  status: string;
+};
+
+export type TemplatesResponse = {
+  items: TemplateItem[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export async function fetchTemplates(): Promise<TemplatesResponse> {
+  return request<TemplatesResponse>("/templates");
+}
+
+export async function createTemplate(payload: {
+  name: string;
+  title_template: string;
+  description?: string;
+  default_deadline_days?: number;
+  verification_policy?: Record<string, unknown>;
+  escalation_policy?: Record<string, unknown>;
+  calendar_policy?: Record<string, unknown>;
+}) {
+  return request<{ id: string; created: boolean }>("/templates", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `template-create-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function patchTemplate(
+  templateId: string,
+  payload: Partial<{
+    name: string;
+    title_template: string;
+    description: string;
+    default_deadline_days: number;
+    verification_policy: Record<string, unknown>;
+    escalation_policy: Record<string, unknown>;
+    calendar_policy: Record<string, unknown>;
+    status: string;
+  }>
+) {
+  return request<{ id: string; updated: boolean }>(`/templates/${templateId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `template-patch-${templateId}-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export type BatchResponse = {
+  id: string;
+  project_id: string;
+  template_id: string | null;
+  name: string;
+  status: string;
+  result: Record<string, unknown> | null;
+  error: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+};
+
+export async function createBatch(payload: {
+  project_id: string;
+  template_id?: string;
+  name: string;
+  people_ids?: string[];
+}) {
+  return request<{ id: string; status: string }>("/batches", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": `batch-create-${Date.now()}`
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function fetchBatch(batchId: string): Promise<BatchResponse> {
+  return request<BatchResponse>(`/batches/${batchId}`);
+}
+
+export async function retryBatch(batchId: string) {
+  return request<{ id: string; status: string; result: Record<string, unknown> }>(`/batches/${batchId}/retry`, {
+    method: "POST",
+    headers: {
+      "Idempotency-Key": `batch-retry-${batchId}-${Date.now()}`
+    }
   });
 }
 

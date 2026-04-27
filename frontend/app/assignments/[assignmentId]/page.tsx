@@ -20,7 +20,7 @@ import {
 import { useMemo, useState } from "react";
 import NotificationStack from "@/components/NotificationStack";
 
-import { fetchAssignmentDetails, patchAssignment, runAssignmentAction } from "@/lib/api";
+import { ApiError, fetchAssignmentDetails, patchAssignment, revertAssignment, runAssignmentAction } from "@/lib/api";
 import { useMutationNotifications, useQueryNotifications } from "@/hooks/useNotifications";
 
 type Props = { params: { assignmentId: string } };
@@ -54,6 +54,7 @@ export default function AssignmentDetailsPage({ params }: Props) {
   const [sqlMinRequired, setSqlMinRequired] = useState(1);
   const [fileExists, setFileExists] = useState("true");
   const [webhookReceived, setWebhookReceived] = useState("true");
+  const [lastSavePayload, setLastSavePayload] = useState<{ progress_completion: number; progress_note: string } | null>(null);
   const revision = useMemo(() => assignment?.revision ?? 1, [assignment?.revision]);
 
   const extractByJsonPath = (obj: unknown, path: string): unknown => {
@@ -172,6 +173,13 @@ export default function AssignmentDetailsPage({ params }: Props) {
         progress_completion: progress,
         progress_note: note
       }),
+    onSuccess: () => {
+      setLastSavePayload({ progress_completion: progress, progress_note: note });
+      qc.invalidateQueries({ queryKey: ["assignment", id] });
+    }
+  });
+  const revert = useMutation({
+    mutationFn: (targetRevision: number) => revertAssignment(id, targetRevision),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["assignment", id] })
   });
 
@@ -221,12 +229,13 @@ export default function AssignmentDetailsPage({ params }: Props) {
   const mutationNotifications = useMutationNotifications([
     {
       id: "assignment-action",
-      error: save.error ?? actionMutation.error ?? undefined,
-      success: save.isSuccess || actionMutation.isSuccess,
+      error: save.error ?? actionMutation.error ?? revert.error ?? undefined,
+      success: save.isSuccess || actionMutation.isSuccess || revert.isSuccess,
       errorFallback: "Не удалось выполнить действие",
       successMessage: "Изменения по задаче сохранены",
     },
   ]);
+  const isConflictError = (save.error instanceof ApiError && save.error.payload.code === "HTTP_409") || (save.error instanceof ApiError && save.error.payload.code === "CONFLICT_EDIT");
   const notifications = [...queryNotifications, ...mutationNotifications];
 
   if (query.isLoading) return <Typography>Загрузка...</Typography>;
@@ -314,7 +323,7 @@ export default function AssignmentDetailsPage({ params }: Props) {
                 onChange={(e) => setHttpResponseJsonPath(e.target.value)}
                 sx={{ minWidth: 220 }}
               />
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" data-testid="response-json-path-hint">
                 Формат: `$.field.subfield` (пример: `$.result.status`)
               </Typography>
               <Stack direction="row" spacing={1}>
@@ -448,6 +457,27 @@ export default function AssignmentDetailsPage({ params }: Props) {
               <Button variant="contained" onClick={() => save.mutate()} disabled={save.isPending}>
                 Сохранить
               </Button>
+              {isConflictError && (
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" variant="outlined" onClick={() => qc.invalidateQueries({ queryKey: ["assignment", id] })}>
+                    Reload latest
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      if (lastSavePayload) {
+                        setProgress(lastSavePayload.progress_completion);
+                        setNote(lastSavePayload.progress_note);
+                        save.mutate();
+                      }
+                    }}
+                    disabled={!lastSavePayload}
+                  >
+                    Retry save
+                  </Button>
+                </Stack>
+              )}
             </Stack>
           </Paper>
         </Grid>
@@ -506,6 +536,18 @@ export default function AssignmentDetailsPage({ params }: Props) {
                 </TableBody>
               </Table>
             </TableContainer>
+          </Paper>
+          <Paper sx={{ p: 2, mt: 2 }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Revisions
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {(query.data?.revisions ?? []).slice(0, 5).map((r) => (
+                <Button key={r.id} size="small" variant="outlined" onClick={() => revert.mutate(r.revision)}>
+                  Revert rev {r.revision}
+                </Button>
+              ))}
+            </Stack>
           </Paper>
         </Grid>
       </Grid>

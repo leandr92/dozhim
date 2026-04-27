@@ -79,6 +79,16 @@ async def lifespan(_: FastAPI):
             campaign_names = {row[1] for row in campaign_cols}
             if "manual_fallback_comment" not in campaign_names and campaign_names:
                 conn.execute(text("ALTER TABLE campaign_messages ADD COLUMN manual_fallback_comment TEXT"))
+            batch_cols = conn.execute(text("PRAGMA table_info(task_batches)")).fetchall()
+            batch_names = {row[1] for row in batch_cols}
+            if "result" not in batch_names and batch_names:
+                conn.execute(text("ALTER TABLE task_batches ADD COLUMN result JSON"))
+            if "error" not in batch_names and batch_names:
+                conn.execute(text("ALTER TABLE task_batches ADD COLUMN error JSON"))
+            if "started_at" not in batch_names and batch_names:
+                conn.execute(text("ALTER TABLE task_batches ADD COLUMN started_at DATETIME"))
+            if "finished_at" not in batch_names and batch_names:
+                conn.execute(text("ALTER TABLE task_batches ADD COLUMN finished_at DATETIME"))
     with Session(bind=engine) as db:
         exists = db.query(Project).filter(Project.id == "system-project").first()
         if not exists:

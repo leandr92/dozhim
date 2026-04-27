@@ -25,3 +25,7 @@ class AssignmentCreate(BaseModel):
     target_object_external_key: str = Field(min_length=1, max_length=255)
     target_object_name: str | None = Field(default=None, max_length=255)
     deadline_at: datetime | None = None
+
+
+class AssignmentRevert(BaseModel):
+    revision: int = Field(ge=1)

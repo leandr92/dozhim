@@ -16,6 +16,9 @@ const nav = [
   { href: "/campaigns", label: "Кампании" },
   { href: "/operator-queue", label: "Очередь" },
   { href: "/jobs", label: "Jobs" },
+  { href: "/people", label: "Люди" },
+  { href: "/templates", label: "Шаблоны" },
+  { href: "/batches", label: "Batch" },
   { href: "/projects", label: "Проекты" },
   { href: "/settings", label: "Настройки" },
   { href: "/audit", label: "Аудит" }

@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import NotificationStack from "@/components/NotificationStack";
 import { fetchJobs, retryJob } from "@/lib/api";
-import { useMutationNotifications, useQueryNotifications } from "@/hooks/useNotifications";
+import { useInfoNotifications, useMutationNotifications, useQueryNotifications } from "@/hooks/useNotifications";
 
 export default function JobsPage() {
   const queryClient = useQueryClient();
@@ -36,7 +36,25 @@ export default function JobsPage() {
       successMessage: "Retry job поставлен в очередь",
     },
   ]);
-  const notifications = [...queryNotifications, ...mutationNotifications];
+  const hasLongRunning = (query.data?.items ?? []).some((job) => {
+    if (!["running", "queued"].includes(job.status)) return false;
+    const createdMs = new Date(job.created_at).getTime();
+    return Number.isFinite(createdMs) && Date.now() - createdMs > 120000;
+  });
+  const hasTimedOut = (query.data?.items ?? []).some((job) => job.status === "timed_out");
+  const infoNotifications = useInfoNotifications([
+    {
+      id: "jobs-long-running",
+      enabled: hasLongRunning,
+      message: "Есть операции дольше обычного (>120с). Проверьте детали job или повторите позже."
+    },
+    {
+      id: "jobs-timeout",
+      enabled: hasTimedOut,
+      message: "Есть jobs со статусом timed_out. Доступно действие Retry."
+    }
+  ]);
+  const notifications = [...queryNotifications, ...mutationNotifications, ...infoNotifications];
 
   return (
     <>

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from app.main import app
 
@@ -11,7 +12,7 @@ def test_manual_create_and_delete_assignment() -> None:
     with TestClient(app) as client:
         create = client.post(
             "/api/v1/assignments",
-            headers=_headers("assignment-create-1"),
+            headers=_headers(f"assignment-create-{uuid4()}"),
             json={
                 "project_id": "system-project",
                 "title": "Ручная задача для проверки",
@@ -24,14 +25,15 @@ def test_manual_create_and_delete_assignment() -> None:
         assert payload["created"] is True
         assignment_id = payload["id"]
 
-        listing = client.get("/api/v1/assignments", headers={"Authorization": "Bearer test-token"})
-        assert listing.status_code == 200
-        ids = {item["id"] for item in listing.json()["items"]}
-        assert assignment_id in ids
+        details_before_delete = client.get(
+            f"/api/v1/assignments/{assignment_id}",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        assert details_before_delete.status_code == 200
 
         remove = client.delete(
             f"/api/v1/assignments/{assignment_id}",
-            headers=_headers("assignment-delete-1"),
+            headers=_headers(f"assignment-delete-{uuid4()}"),
         )
         assert remove.status_code == 200
         assert remove.json()["deleted"] is True

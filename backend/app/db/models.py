@@ -25,6 +25,37 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class Person(Base):
+    __tablename__ = "people"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    full_name: Mapped[str] = mapped_column(String, nullable=False)
+    email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    telegram_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    phone: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="executor")
+    manager_person_id: Mapped[str | None] = mapped_column(String, ForeignKey("people.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class TaskTemplate(Base):
+    __tablename__ = "task_templates"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    title_template: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    default_deadline_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    verification_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    escalation_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    calendar_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class TargetObject(Base):
     __tablename__ = "target_objects"
 
@@ -79,6 +110,18 @@ class StatusHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class Touchpoint(Base):
+    __tablename__ = "touchpoints"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    assignment_id: Mapped[str] = mapped_column(ForeignKey("task_assignments.id"), nullable=False)
+    channel: Mapped[str] = mapped_column(String, nullable=False, default="system")
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    actor_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class TaskBatch(Base):
     __tablename__ = "task_batches"
 
@@ -87,6 +130,10 @@ class TaskBatch(Base):
     template_id: Mapped[str | None] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 

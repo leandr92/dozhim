@@ -41,7 +41,7 @@ test("dashboard shows counters from API and supports navigation", async ({ page 
   await expect(page.getByText("7")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
 
-  await page.getByRole("button", { name: "Задачи" }).click();
+  await page.getByRole("link", { name: "Задачи" }).click();
   await expect(page).toHaveURL(/\/assignments$/);
 });
 
@@ -90,12 +90,12 @@ test("assignments page allows manual create flow", async ({ page }) => {
   });
 
   await page.goto("/assignments");
-  await page.getByLabel("Название").fill("Актуализировать проект");
+  await page.getByLabel("Название", { exact: true }).fill("Актуализировать проект");
   await page.getByLabel("target_object_external_key").fill("OBJ-001");
   await page.getByRole("button", { name: "Создать" }).click();
 
   await expect(page.getByText("Актуализировать проект")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Открыть" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Открыть" })).toBeVisible();
 });
 
 test("assignment details supports JSON-path hint and evidence preview fallback", async ({ page }) => {
@@ -159,7 +159,9 @@ test("assignment details supports JSON-path hint and evidence preview fallback",
   });
 
   await page.goto("/assignments/a-1");
-  await expect(page.getByText("Формат: `$.field.subfield` (пример: `$.result.status`)")).toBeVisible();
+  await page.getByLabel("Verification mode").click();
+  await page.getByRole("option", { name: "http_api" }).click();
+  await expect(page.getByTestId("response-json-path-hint")).toBeVisible();
 
   await page.getByRole("button", { name: "Use last evidence payload as preview" }).click();
   const previewField = page.getByLabel("preview response (json)");

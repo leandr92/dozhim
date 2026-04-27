@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps.auth import require_bearer_token, require_roles
-from app.db.models import CampaignMessage, Evidence, Job, OperatorQueueItem, Project, Revision, StatusHistory, TargetObject, TaskAssignment
+from app.db.models import CampaignMessage, Evidence, Job, OperatorQueueItem, Project, Revision, StatusHistory, TargetObject, TaskAssignment, Touchpoint
 from app.db.session import get_db
-from app.schemas.assignments import AssignmentActionRequest, AssignmentCreate, AssignmentPatch
+from app.schemas.assignments import AssignmentActionRequest, AssignmentCreate, AssignmentPatch, AssignmentRevert
 from app.schemas.common import JobAccepted
 from app.services.jobs import new_job_id as generate_job_id
 from app.services.state_machine import assert_transition
@@ -42,6 +42,9 @@ def list_assignments(
     page_size: int = 50,
     project_id: str | None = None,
     target_object_id: str | None = None,
+    status_filter: str | None = None,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
     _token: str = Depends(require_bearer_token),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -50,11 +53,18 @@ def list_assignments(
         query = query.filter(TaskAssignment.project_id == project_id)
     if target_object_id:
         query = query.filter(TaskAssignment.target_object_id == target_object_id)
+    if status_filter:
+        query = query.filter(TaskAssignment.status == status_filter)
+
+    sort_column = TaskAssignment.created_at if sort_by == "created_at" else TaskAssignment.deadline_at
+    if sort_dir.lower() == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
 
     total = query.count()
     rows = (
-        query.order_by(TaskAssignment.created_at.desc())
-        .offset((page - 1) * page_size)
+        query.offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
@@ -77,6 +87,9 @@ def list_assignments(
         "filters": {
             "project_id": project_id,
             "target_object_id": target_object_id,
+            "status": status_filter,
+            "sort_by": sort_by,
+            "sort_dir": sort_dir,
         },
     }
 
@@ -136,6 +149,15 @@ def create_assignment(
             actor_id="api-user",
         )
     )
+    db.add(
+        Touchpoint(
+            assignment_id=assignment.id,
+            channel="system",
+            kind="manual_create",
+            payload={"title": assignment.title},
+            actor_id="api-user",
+        )
+    )
     db.commit()
     return {"id": assignment.id, "task_code": assignment.task_code, "created": True}
 
@@ -178,6 +200,7 @@ def delete_assignment(
     db.query(Revision).filter(Revision.entity_type == "task_assignment", Revision.entity_id == assignment_id).delete(
         synchronize_session=False
     )
+    db.query(Touchpoint).filter(Touchpoint.assignment_id == assignment_id).delete(synchronize_session=False)
     db.delete(assignment)
     db.commit()
     return {"id": assignment_id, "deleted": True}
@@ -257,9 +280,81 @@ def patch_assignment(
             actor_id="api-user",
         )
     )
+    db.add(
+        Touchpoint(
+            assignment_id=assignment.id,
+            channel="system",
+            kind="manual_patch",
+            payload={"revision": assignment.revision},
+            actor_id="api-user",
+        )
+    )
     db.commit()
     db.refresh(assignment)
     return {"assignment_id": assignment_id, "updated": True, "revision": assignment.revision}
+
+
+@router.post("/{assignment_id}/revert")
+def revert_assignment(
+    assignment_id: str,
+    payload: AssignmentRevert,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    _token: str = Depends(require_bearer_token),
+    _role: str = Depends(require_roles("operator", "admin")),
+    db: Session = Depends(get_db),
+) -> dict:
+    if not idempotency_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Idempotency-Key header is required")
+    assignment = db.get(TaskAssignment, assignment_id)
+    if assignment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    target_revision = (
+        db.query(Revision)
+        .filter(
+            Revision.entity_type == "task_assignment",
+            Revision.entity_id == assignment_id,
+            Revision.revision == payload.revision,
+        )
+        .first()
+    )
+    if target_revision is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Revision not found")
+
+    snapshot = (target_revision.diff or {}).get("before", {})
+    deadline_raw = snapshot.get("deadline_at")
+    next_commitment_raw = snapshot.get("next_commitment_date")
+    assignment.status = snapshot.get("status", assignment.status)
+    assignment.deadline_at = datetime.fromisoformat(deadline_raw) if isinstance(deadline_raw, str) and deadline_raw else None
+    assignment.progress_completion = snapshot.get("progress_completion", assignment.progress_completion)
+    assignment.progress_note = snapshot.get("progress_note")
+    assignment.next_commitment_date = (
+        datetime.fromisoformat(next_commitment_raw).date()
+        if isinstance(next_commitment_raw, str) and next_commitment_raw
+        else None
+    )
+    assignment.revision += 1
+    assignment.updated_at = datetime.utcnow()
+    db.add(assignment)
+    db.add(
+        Revision(
+            entity_type="task_assignment",
+            entity_id=assignment.id,
+            revision=assignment.revision,
+            diff={"reverted_from_revision": payload.revision, "snapshot": snapshot},
+            actor_id="api-user",
+        )
+    )
+    db.add(
+        Touchpoint(
+            assignment_id=assignment.id,
+            channel="system",
+            kind="revert_revision",
+            payload={"target_revision": payload.revision},
+            actor_id="api-user",
+        )
+    )
+    db.commit()
+    return {"assignment_id": assignment.id, "reverted": True, "revision": assignment.revision}
 
 
 @router.get("/{assignment_id}")
@@ -288,6 +383,12 @@ def get_assignment_details(
         db.query(Revision)
         .filter(Revision.entity_type == "task_assignment", Revision.entity_id == assignment_id)
         .order_by(Revision.revision.desc())
+        .all()
+    )
+    touchpoints = (
+        db.query(Touchpoint)
+        .filter(Touchpoint.assignment_id == assignment_id)
+        .order_by(Touchpoint.created_at.desc())
         .all()
     )
 
@@ -340,6 +441,17 @@ def get_assignment_details(
             }
             for item in revisions
         ],
+        "touchpoints": [
+            {
+                "id": item.id,
+                "channel": item.channel,
+                "kind": item.kind,
+                "payload": item.payload,
+                "actor_id": item.actor_id,
+                "created_at": item.created_at,
+            }
+            for item in touchpoints
+        ],
     }
 
 
@@ -384,6 +496,15 @@ def run_assignment_action(
             kind=f"assignment_action:{payload.action}",
             status="queued",
             payload={"assignment_id": assignment_id, "action": payload.action, "payload": payload.payload},
+        )
+    )
+    db.add(
+        Touchpoint(
+            assignment_id=assignment.id,
+            channel="system",
+            kind=f"action_{payload.action}",
+            payload=payload.payload,
+            actor_id="api-user",
         )
     )
     db.commit()
