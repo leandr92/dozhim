@@ -23,7 +23,17 @@ API base path: `http://127.0.0.1:8000/api/v1`
 - `DELETE /api/v1/assignments/{assignment_id}`
 - `GET /api/v1/assignments/{assignment_id}/actions/allowed`
 - `PATCH /api/v1/assignments/{assignment_id}`
+- `POST /api/v1/assignments/{assignment_id}/revert`
 - `POST /api/v1/assignments/{assignment_id}/actions` (job-based)
+- `GET /api/v1/people`
+- `POST /api/v1/people`
+- `PATCH /api/v1/people/{person_id}`
+- `GET /api/v1/templates`
+- `POST /api/v1/templates`
+- `PATCH /api/v1/templates/{template_id}`
+- `POST /api/v1/batches`
+- `GET /api/v1/batches/{batch_id}`
+- `POST /api/v1/batches/{batch_id}/retry`
 - `POST /api/v1/campaigns/personalized/upload` (job-based)
 - `GET /api/v1/imports`
 - `POST /api/v1/imports/{import_id}/apply` (job-based)
