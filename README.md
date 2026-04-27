@@ -48,6 +48,7 @@ API base path: `http://127.0.0.1:8000/api/v1`
 - Idempotency responses are persisted for 24h (`DOZHIM_IDEMPOTENCY_TTL_HOURS`); repeated request with same key and same payload returns stored response, with different payload returns `409 IDEMPOTENCY_KEY_REUSED`.
 - HTTP verification adapter allowlist is controlled by `DOZHIM_VERIFICATION_HTTP_ALLOWED_HOSTS` (comma-separated, default: `127.0.0.1,localhost`).
 - HTTP verification allowed methods are configured with `DOZHIM_VERIFICATION_HTTP_ALLOWED_METHODS` (default: `GET,POST`), and timeout is capped by `DOZHIM_VERIFICATION_HTTP_MAX_TIMEOUT_SECONDS` (default: `10.0`).
+- HTTP verification also supports business condition checks by response JSON path (`response_json_path`, e.g. `$.result.status`) and expected JSON value (`expected_json_value`).
 
 ### Database migrations
 

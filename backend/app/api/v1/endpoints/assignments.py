@@ -325,6 +325,7 @@ def get_assignment_details(
                 "verification_status": item.verification_status,
                 "business_outcome": item.business_outcome,
                 "technical_error_code": item.technical_error_code,
+                "payload": item.payload,
                 "created_at": item.created_at,
             }
             for item in evidence

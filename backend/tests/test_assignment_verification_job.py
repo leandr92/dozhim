@@ -119,6 +119,17 @@ class _OkHandler(BaseHTTPRequestHandler):
         return
 
 
+class _JsonHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(b'{"result":{"status":"ok"}}')
+
+    def log_message(self, format, *args):  # noqa: A003
+        return
+
+
 def test_http_api_live_call_strategy() -> None:
     server = HTTPServer(("127.0.0.1", 0), _OkHandler)
     host, port = server.server_address
@@ -235,3 +246,95 @@ def test_http_api_method_not_allowed() -> None:
         body = details.json()
         assert body["assignment"]["status"] == "blocked"
         assert body["evidence"][0]["technical_error_code"] == "HTTP_METHOD_NOT_ALLOWED"
+
+
+def test_http_api_json_path_business_condition() -> None:
+    server = HTTPServer(("127.0.0.1", 0), _JsonHandler)
+    host, port = server.server_address
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assignment_id = _seed_assignment()
+        with TestClient(app) as client:
+            action = client.post(
+                f"/api/v1/assignments/{assignment_id}/actions",
+                headers={
+                    "Authorization": "Bearer test-token",
+                    "X-Role": "operator",
+                    "Idempotency-Key": f"idem-verify-http-json-{uuid4()}",
+                },
+                json={
+                    "action": "run_verification",
+                    "revision": 1,
+                    "payload": {
+                        "mode": "http_api",
+                        "url": f"http://{host}:{port}/health",
+                        "method": "GET",
+                        "expected_status": 200,
+                        "response_json_path": "$.result.status",
+                        "expected_json_value": "ok",
+                    },
+                },
+            )
+            assert action.status_code == 202
+            run_once = client.post(
+                "/api/v1/jobs/run-once",
+                headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
+            )
+            assert run_once.status_code == 200
+            details = client.get(
+                f"/api/v1/assignments/{assignment_id}",
+                headers={"Authorization": "Bearer test-token"},
+            )
+            body = details.json()
+            assert body["assignment"]["status"] == "done"
+            assert body["evidence"][0]["technical_error_code"] is None
+    finally:
+        server.shutdown()
+        sleep(0.05)
+
+
+def test_http_api_json_path_business_condition_failed() -> None:
+    server = HTTPServer(("127.0.0.1", 0), _JsonHandler)
+    host, port = server.server_address
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assignment_id = _seed_assignment()
+        with TestClient(app) as client:
+            action = client.post(
+                f"/api/v1/assignments/{assignment_id}/actions",
+                headers={
+                    "Authorization": "Bearer test-token",
+                    "X-Role": "operator",
+                    "Idempotency-Key": f"idem-verify-http-json-fail-{uuid4()}",
+                },
+                json={
+                    "action": "run_verification",
+                    "revision": 1,
+                    "payload": {
+                        "mode": "http_api",
+                        "url": f"http://{host}:{port}/health",
+                        "method": "GET",
+                        "expected_status": 200,
+                        "response_json_path": "$.result.status",
+                        "expected_json_value": "not-ok",
+                    },
+                },
+            )
+            assert action.status_code == 202
+            run_once = client.post(
+                "/api/v1/jobs/run-once",
+                headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
+            )
+            assert run_once.status_code == 200
+            details = client.get(
+                f"/api/v1/assignments/{assignment_id}",
+                headers={"Authorization": "Bearer test-token"},
+            )
+            body = details.json()
+            assert body["assignment"]["status"] == "blocked"
+            assert body["evidence"][0]["technical_error_code"] == "HTTP_JSON_CONDITION_FAILED"
+    finally:
+        server.shutdown()
+        sleep(0.05)

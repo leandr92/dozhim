@@ -41,15 +41,36 @@ export default function AssignmentDetailsPage({ params }: Props) {
   const [httpExpectedStatus, setHttpExpectedStatus] = useState(200);
   const [httpTimeoutSeconds, setHttpTimeoutSeconds] = useState(5);
   const [httpRetries, setHttpRetries] = useState(3);
+  const [httpResponseJsonPath, setHttpResponseJsonPath] = useState("$.result.status");
+  const [httpExpectedJsonValueRaw, setHttpExpectedJsonValueRaw] = useState('"ok"');
   const [httpHeadersJson, setHttpHeadersJson] = useState("{}");
   const [httpBodyJson, setHttpBodyJson] = useState("{}");
+  const [httpPreviewResponseJson, setHttpPreviewResponseJson] = useState('{"result":{"status":"ok"}}');
   const [httpJsonHelperMessage, setHttpJsonHelperMessage] = useState<string>("");
   const [httpJsonHelperError, setHttpJsonHelperError] = useState(false);
+  const [httpPreviewMessage, setHttpPreviewMessage] = useState<string>("");
+  const [httpPreviewError, setHttpPreviewError] = useState(false);
   const [sqlRowCount, setSqlRowCount] = useState(1);
   const [sqlMinRequired, setSqlMinRequired] = useState(1);
   const [fileExists, setFileExists] = useState("true");
   const [webhookReceived, setWebhookReceived] = useState("true");
   const revision = useMemo(() => assignment?.revision ?? 1, [assignment?.revision]);
+
+  const extractByJsonPath = (obj: unknown, path: string): unknown => {
+    const normalized = path.trim();
+    if (!normalized.startsWith("$.")) {
+      throw new Error("response_json_path должен начинаться с '$.'");
+    }
+    const parts = normalized.slice(2).split(".").filter(Boolean);
+    let current: unknown = obj;
+    for (const part of parts) {
+      if (!current || typeof current !== "object" || !(part in (current as Record<string, unknown>))) {
+        throw new Error(`Путь '${normalized}' не найден в JSON`);
+      }
+      current = (current as Record<string, unknown>)[part];
+    }
+    return current;
+  };
 
   const parseHttpJsonInputs = () => {
     let parsedHeaders: Record<string, string> = {};
@@ -64,7 +85,11 @@ export default function AssignmentDetailsPage({ params }: Props) {
     if (bodyObj && typeof bodyObj === "object") {
       parsedBody = bodyObj as Record<string, unknown>;
     }
-    return { parsedHeaders, parsedBody };
+    let expectedJsonValue: unknown = undefined;
+    if (httpResponseJsonPath.trim() && httpExpectedJsonValueRaw.trim()) {
+      expectedJsonValue = JSON.parse(httpExpectedJsonValueRaw);
+    }
+    return { parsedHeaders, parsedBody, expectedJsonValue };
   };
 
   const validateHttpJson = () => {
@@ -82,12 +107,62 @@ export default function AssignmentDetailsPage({ params }: Props) {
     try {
       setHttpHeadersJson(JSON.stringify(JSON.parse(httpHeadersJson || "{}"), null, 2));
       setHttpBodyJson(JSON.stringify(JSON.parse(httpBodyJson || "{}"), null, 2));
+      if (httpExpectedJsonValueRaw.trim()) {
+        setHttpExpectedJsonValueRaw(JSON.stringify(JSON.parse(httpExpectedJsonValueRaw), null, 2));
+      }
       setHttpJsonHelperError(false);
       setHttpJsonHelperMessage("JSON отформатирован");
     } catch {
       setHttpJsonHelperError(true);
       setHttpJsonHelperMessage("Невозможно форматировать: некорректный JSON");
     }
+  };
+
+  const applyPathTemplate = (template: string) => {
+    setHttpResponseJsonPath(template);
+    setHttpPreviewError(false);
+    setHttpPreviewMessage(`Шаблон применен: ${template}`);
+  };
+
+  const runHttpPreview = () => {
+    try {
+      const responseObj = JSON.parse(httpPreviewResponseJson);
+      const actual = extractByJsonPath(responseObj, httpResponseJsonPath);
+      const expected = httpExpectedJsonValueRaw.trim() ? JSON.parse(httpExpectedJsonValueRaw) : undefined;
+      const matches = expected === undefined ? true : JSON.stringify(actual) === JSON.stringify(expected);
+      setHttpPreviewError(!matches);
+      setHttpPreviewMessage(
+        matches
+          ? `Preview OK: path value = ${JSON.stringify(actual)}`
+          : `Preview mismatch: actual=${JSON.stringify(actual)}, expected=${JSON.stringify(expected)}`
+      );
+    } catch (err) {
+      setHttpPreviewError(true);
+      setHttpPreviewMessage(err instanceof Error ? err.message : "Ошибка preview");
+    }
+  };
+
+  const useLastEvidencePayloadAsPreview = () => {
+    const lastEvidence = query.data?.evidence?.[0];
+    const payload = lastEvidence?.payload;
+    if (!payload || typeof payload !== "object") {
+      setHttpPreviewError(true);
+      setHttpPreviewMessage("В последнем evidence нет payload для preview");
+      return;
+    }
+    const payloadRecord = payload as Record<string, unknown>;
+    const responseBody = payloadRecord.response_body;
+    const previewSource =
+      responseBody && typeof responseBody === "object"
+        ? responseBody
+        : payload;
+    setHttpPreviewResponseJson(JSON.stringify(previewSource, null, 2));
+    setHttpPreviewError(false);
+    setHttpPreviewMessage(
+      responseBody && typeof responseBody === "object"
+        ? "Preview JSON обновлен из payload.response_body"
+        : "Preview JSON обновлен из последнего evidence payload"
+    );
   };
 
   const save = useMutation({
@@ -109,7 +184,7 @@ export default function AssignmentDetailsPage({ params }: Props) {
             : verificationMode === "http_api"
               ? (() => {
                   try {
-                    const { parsedHeaders, parsedBody } = parseHttpJsonInputs();
+                    const { parsedHeaders, parsedBody, expectedJsonValue } = parseHttpJsonInputs();
                     setHttpJsonHelperError(false);
                     setHttpJsonHelperMessage("");
                     return {
@@ -119,12 +194,14 @@ export default function AssignmentDetailsPage({ params }: Props) {
                       expected_status: httpExpectedStatus,
                       timeout_seconds: httpTimeoutSeconds,
                       retries: httpRetries,
+                      response_json_path: httpResponseJsonPath.trim() || undefined,
+                      expected_json_value: expectedJsonValue,
                       headers: parsedHeaders,
                       body: parsedBody,
                     };
                   } catch {
                     setHttpJsonHelperError(true);
-                    setHttpJsonHelperMessage("Некорректный JSON в HTTP headers или body");
+                    setHttpJsonHelperMessage("Некорректный JSON в HTTP headers/body или expected_json_value");
                     throw new Error("Некорректный JSON в HTTP headers");
                   }
                 })()
@@ -232,6 +309,34 @@ export default function AssignmentDetailsPage({ params }: Props) {
               />
               <TextField
                 size="small"
+                label="response_json_path"
+                value={httpResponseJsonPath}
+                onChange={(e) => setHttpResponseJsonPath(e.target.value)}
+                sx={{ minWidth: 220 }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                Формат: `$.field.subfield` (пример: `$.result.status`)
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" onClick={() => applyPathTemplate("$.result.status")}>
+                  $.result.status
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => applyPathTemplate("$.data.state")}>
+                  $.data.state
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => applyPathTemplate("$.meta.success")}>
+                  $.meta.success
+                </Button>
+              </Stack>
+              <TextField
+                size="small"
+                label="expected_json_value (json)"
+                value={httpExpectedJsonValueRaw}
+                onChange={(e) => setHttpExpectedJsonValueRaw(e.target.value)}
+                sx={{ minWidth: 220 }}
+              />
+              <TextField
+                size="small"
                 label="headers (json)"
                 value={httpHeadersJson}
                 onChange={(e) => setHttpHeadersJson(e.target.value)}
@@ -248,6 +353,15 @@ export default function AssignmentDetailsPage({ params }: Props) {
                 minRows={2}
                 sx={{ minWidth: 260 }}
               />
+              <TextField
+                size="small"
+                label="preview response (json)"
+                value={httpPreviewResponseJson}
+                onChange={(e) => setHttpPreviewResponseJson(e.target.value)}
+                multiline
+                minRows={2}
+                sx={{ minWidth: 320 }}
+              />
               <Stack direction="row" spacing={1}>
                 <Button size="small" variant="outlined" onClick={formatHttpJson}>
                   Format JSON
@@ -255,10 +369,21 @@ export default function AssignmentDetailsPage({ params }: Props) {
                 <Button size="small" variant="outlined" onClick={validateHttpJson}>
                   Validate JSON
                 </Button>
+                <Button size="small" variant="outlined" onClick={runHttpPreview}>
+                  Live Preview
+                </Button>
+                <Button size="small" variant="outlined" onClick={useLastEvidencePayloadAsPreview}>
+                  Use last evidence payload as preview
+                </Button>
               </Stack>
               {httpJsonHelperMessage && (
                 <Typography variant="caption" color={httpJsonHelperError ? "error.main" : "success.main"}>
                   {httpJsonHelperMessage}
+                </Typography>
+              )}
+              {httpPreviewMessage && (
+                <Typography variant="caption" color={httpPreviewError ? "error.main" : "success.main"}>
+                  {httpPreviewMessage}
                 </Typography>
               )}
             </>

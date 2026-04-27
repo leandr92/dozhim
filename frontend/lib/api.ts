@@ -193,6 +193,7 @@ export type AssignmentDetailsResponse = {
     verification_status: string;
     business_outcome: string | null;
     technical_error_code: string | null;
+    payload?: Record<string, unknown> | null;
     created_at: string;
   }>;
   revisions: Array<{

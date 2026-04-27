@@ -13,6 +13,19 @@ from app.core.config import settings
 from app.db.models import Campaign, CampaignMessage, Evidence, Job, Revision, StatusHistory, TaskAssignment
 
 
+def _extract_json_path(payload: dict, path: str) -> object | None:
+    normalized = path.strip()
+    if not normalized.startswith("$."):
+        return None
+    parts = [p for p in normalized[2:].split(".") if p]
+    current: object = payload
+    for part in parts:
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
 def lease_next_job(db: Session, *, lease_seconds: int = 300) -> Job | None:
     now = datetime.utcnow()
     candidates = (
@@ -84,6 +97,9 @@ def _run_http_verification(payload: dict) -> tuple[str, str, str | None, dict]:
     timeout_seconds = float(payload.get("timeout_seconds") or 5)
     timeout_seconds = min(max(timeout_seconds, 0.1), settings.verification_http_max_timeout_seconds)
     retries = max(1, int(payload.get("retries") or 3))
+    response_json_path = str(payload.get("response_json_path") or "").strip()
+    has_expected_json_value = "expected_json_value" in payload
+    expected_json_value = payload.get("expected_json_value")
     headers = payload.get("headers") or {}
     body = payload.get("body")
     encoded_body = None
@@ -93,12 +109,27 @@ def _run_http_verification(payload: dict) -> tuple[str, str, str | None, dict]:
 
     last_error: str | None = None
     last_status: int | None = None
+    last_json_value: object | None = None
     for attempt in range(1, retries + 1):
         req = urlrequest.Request(url=url, method=method, data=encoded_body, headers=headers)
         try:
             with urlrequest.urlopen(req, timeout=timeout_seconds) as resp:
                 last_status = resp.getcode()
-            if last_status == expected:
+                raw = resp.read()
+            response_ok = last_status == expected
+            if response_ok and response_json_path and has_expected_json_value:
+                try:
+                    parsed_body = json.loads(raw.decode() or "{}")
+                    if not isinstance(parsed_body, dict):
+                        parsed_body = {"data": parsed_body}
+                    last_json_value = _extract_json_path(parsed_body, response_json_path)
+                    response_ok = last_json_value == expected_json_value
+                    if not response_ok:
+                        last_error = "HTTP_JSON_CONDITION_FAILED"
+                except Exception:  # noqa: BLE001
+                    response_ok = False
+                    last_error = "HTTP_JSON_PARSE_FAILED"
+            if response_ok:
                 return (
                     "verified",
                     "done",
@@ -108,9 +139,12 @@ def _run_http_verification(payload: dict) -> tuple[str, str, str | None, dict]:
                         "attempts": attempt,
                         "response_status": last_status,
                         "timeout_seconds": timeout_seconds,
+                        "response_json_path": response_json_path or None,
+                        "actual_json_value": last_json_value,
                     },
                 )
-            last_error = "HTTP_STATUS_MISMATCH"
+            if not last_error:
+                last_error = "HTTP_STATUS_MISMATCH"
         except urlerror.HTTPError as exc:
             last_status = exc.code
             last_error = "HTTP_STATUS_MISMATCH"
@@ -122,7 +156,14 @@ def _run_http_verification(payload: dict) -> tuple[str, str, str | None, dict]:
         "rejected",
         "cannot_be_done",
         last_error or "HTTP_FAILED",
-        {"mode": "http_api", "attempts": retries, "response_status": last_status, "timeout_seconds": timeout_seconds},
+        {
+            "mode": "http_api",
+            "attempts": retries,
+            "response_status": last_status,
+            "timeout_seconds": timeout_seconds,
+            "response_json_path": response_json_path or None,
+            "actual_json_value": last_json_value,
+        },
     )
 
 
