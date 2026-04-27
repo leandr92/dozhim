@@ -39,6 +39,24 @@ def _seed_assignment() -> str:
         db.close()
 
 
+def _run_until_status(client: TestClient, assignment_id: str, expected_status: str) -> dict:
+    for _ in range(50):
+        run_once = client.post(
+            "/api/v1/jobs/run-once",
+            headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
+        )
+        assert run_once.status_code == 200
+        details = client.get(
+            f"/api/v1/assignments/{assignment_id}",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        assert details.status_code == 200
+        body = details.json()
+        if body["assignment"]["status"] == expected_status:
+            return body
+    return body
+
+
 def test_run_verification_action_changes_assignment_status() -> None:
     assignment_id = _seed_assignment()
     with TestClient(app) as client:
@@ -47,7 +65,7 @@ def test_run_verification_action_changes_assignment_status() -> None:
             headers={
                 "Authorization": "Bearer test-token",
                 "X-Role": "operator",
-                "Idempotency-Key": "idem-verify-action",
+                "Idempotency-Key": f"idem-verify-action-{uuid4()}",
             },
             json={
                 "action": "run_verification",
@@ -57,18 +75,7 @@ def test_run_verification_action_changes_assignment_status() -> None:
         )
         assert action.status_code == 202
 
-        run_once = client.post(
-            "/api/v1/jobs/run-once",
-            headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-        )
-        assert run_once.status_code == 200
-
-        details = client.get(
-            f"/api/v1/assignments/{assignment_id}",
-            headers={"Authorization": "Bearer test-token"},
-        )
-        assert details.status_code == 200
-        body = details.json()
+        body = _run_until_status(client, assignment_id, "done")
         assert body["assignment"]["status"] == "done"
         assert len(body["evidence"]) >= 1
 
@@ -94,17 +101,7 @@ def test_verification_strategies_modes() -> None:
                 json={"action": "run_verification", "revision": 1, "payload": payload},
             )
             assert action.status_code == 202
-            run_once = client.post(
-                "/api/v1/jobs/run-once",
-                headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-            )
-            assert run_once.status_code == 200
-            details = client.get(
-                f"/api/v1/assignments/{assignment_id}",
-                headers={"Authorization": "Bearer test-token"},
-            )
-            assert details.status_code == 200
-            body = details.json()
+            body = _run_until_status(client, assignment_id, expected_status)
             assert body["assignment"]["status"] == expected_status
             assert body["evidence"][0]["verification_status"] in {"verified", "rejected"}
 
@@ -159,16 +156,7 @@ def test_http_api_live_call_strategy() -> None:
                 },
             )
             assert action.status_code == 202
-            run_once = client.post(
-                "/api/v1/jobs/run-once",
-                headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-            )
-            assert run_once.status_code == 200
-            details = client.get(
-                f"/api/v1/assignments/{assignment_id}",
-                headers={"Authorization": "Bearer test-token"},
-            )
-            body = details.json()
+            body = _run_until_status(client, assignment_id, "done")
             assert body["assignment"]["status"] == "done"
             assert body["evidence"][0]["technical_error_code"] is None
     finally:
@@ -198,16 +186,7 @@ def test_http_api_host_not_allowed() -> None:
             },
         )
         assert action.status_code == 202
-        run_once = client.post(
-            "/api/v1/jobs/run-once",
-            headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-        )
-        assert run_once.status_code == 200
-        details = client.get(
-            f"/api/v1/assignments/{assignment_id}",
-            headers={"Authorization": "Bearer test-token"},
-        )
-        body = details.json()
+        body = _run_until_status(client, assignment_id, "blocked")
         assert body["assignment"]["status"] == "blocked"
         assert body["evidence"][0]["technical_error_code"] == "HTTP_HOST_NOT_ALLOWED"
 
@@ -234,16 +213,7 @@ def test_http_api_method_not_allowed() -> None:
             },
         )
         assert action.status_code == 202
-        run_once = client.post(
-            "/api/v1/jobs/run-once",
-            headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-        )
-        assert run_once.status_code == 200
-        details = client.get(
-            f"/api/v1/assignments/{assignment_id}",
-            headers={"Authorization": "Bearer test-token"},
-        )
-        body = details.json()
+        body = _run_until_status(client, assignment_id, "blocked")
         assert body["assignment"]["status"] == "blocked"
         assert body["evidence"][0]["technical_error_code"] == "HTTP_METHOD_NOT_ALLOWED"
 
@@ -277,16 +247,7 @@ def test_http_api_json_path_business_condition() -> None:
                 },
             )
             assert action.status_code == 202
-            run_once = client.post(
-                "/api/v1/jobs/run-once",
-                headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-            )
-            assert run_once.status_code == 200
-            details = client.get(
-                f"/api/v1/assignments/{assignment_id}",
-                headers={"Authorization": "Bearer test-token"},
-            )
-            body = details.json()
+            body = _run_until_status(client, assignment_id, "done")
             assert body["assignment"]["status"] == "done"
             assert body["evidence"][0]["technical_error_code"] is None
     finally:
@@ -323,16 +284,7 @@ def test_http_api_json_path_business_condition_failed() -> None:
                 },
             )
             assert action.status_code == 202
-            run_once = client.post(
-                "/api/v1/jobs/run-once",
-                headers={"Authorization": "Bearer test-token", "X-Role": "operator"},
-            )
-            assert run_once.status_code == 200
-            details = client.get(
-                f"/api/v1/assignments/{assignment_id}",
-                headers={"Authorization": "Bearer test-token"},
-            )
-            body = details.json()
+            body = _run_until_status(client, assignment_id, "blocked")
             assert body["assignment"]["status"] == "blocked"
             assert body["evidence"][0]["technical_error_code"] == "HTTP_JSON_CONDITION_FAILED"
     finally:

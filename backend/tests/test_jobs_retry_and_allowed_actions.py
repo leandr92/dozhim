@@ -1,10 +1,11 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from app.main import app
 
 
 def _headers(idem: str = "idem-jobs") -> dict[str, str]:
-    return {"Authorization": "Bearer test-token", "Idempotency-Key": idem}
+    return {"Authorization": "Bearer test-token", "Idempotency-Key": f"{idem}-{uuid4()}"}
 
 
 def _valid_csv() -> bytes:
@@ -40,7 +41,7 @@ def test_retry_job_endpoint() -> None:
         # create failed job by canceling and retrying from terminal state
         upload = client.post(
             "/api/v1/campaigns/personalized/upload",
-            headers=_headers("idem-upload-retry-job"),
+            headers=_headers(f"idem-upload-retry-job-{uuid4()}"),
             files={"file": ("import.csv", _valid_csv(), "text/csv")},
             data={"dry_run": "true"},
         )
@@ -48,9 +49,9 @@ def test_retry_job_endpoint() -> None:
         job_location = upload.headers.get("Location")
         assert job_location
         job_id = job_location.rsplit("/", 1)[-1]
-        cancel = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=_headers("idem-cancel-job"))
+        cancel = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=_headers(f"idem-cancel-job-{uuid4()}"))
         assert cancel.status_code == 202
 
-        retry = client.post(f"/api/v1/jobs/{job_id}/retry", headers=_headers("idem-retry-job"))
+        retry = client.post(f"/api/v1/jobs/{job_id}/retry", headers=_headers(f"idem-retry-job-{uuid4()}"))
         assert retry.status_code == 202
         assert "job_id" in retry.json()

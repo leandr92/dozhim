@@ -46,3 +46,7 @@ def test_assignments_filter_sort_and_revert() -> None:
         )
         assert revert.status_code == 200
         assert revert.json()["reverted"] is True
+        details_after = client.get(f"/api/v1/assignments/{assignment_id}", headers={"Authorization": "Bearer test-token"})
+        assert details_after.status_code == 200
+        assert isinstance(details_after.json().get("touchpoints"), list)
+        assert len(details_after.json()["touchpoints"]) >= 2

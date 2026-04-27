@@ -26,6 +26,10 @@ function toIso(date: Date): string {
   return date.toISOString();
 }
 
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value));
+}
+
 export default function AuditPage() {
   const [filters, setFilters] = useState<AuditLogsFilters>({ sort_by: "created_at", sort_dir: "desc" });
   const [page, setPage] = useState(1);
@@ -153,7 +157,7 @@ export default function AuditPage() {
           <Button
             size="small"
             variant="contained"
-            onClick={() =>
+            onClick={() => {
               setFilters((s) => ({
                 ...s,
                 actor_id: actorInput.trim() || undefined,
@@ -165,7 +169,7 @@ export default function AuditPage() {
                 sort_dir: s.sort_dir ?? "desc",
               }));
               setPage(1);
-            }
+            }}
           >
             Применить
           </Button>
@@ -191,7 +195,7 @@ export default function AuditPage() {
           <TableBody>
             {(query.data?.items ?? []).map((x) => (
               <TableRow key={x.id}>
-                <TableCell>{x.created_at}</TableCell>
+                <TableCell>{formatDate(x.created_at)}</TableCell>
                 <TableCell>{x.actor_id ?? "-"}</TableCell>
                 <TableCell>{x.actor_role ?? "-"}</TableCell>
                 <TableCell>{x.action}</TableCell>

@@ -18,6 +18,8 @@ import { fetchJobs, retryJob } from "@/lib/api";
 import { useInfoNotifications, useMutationNotifications, useQueryNotifications } from "@/hooks/useNotifications";
 
 export default function JobsPage() {
+  const formatDate = (value: string) =>
+    new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value));
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["jobs"], queryFn: fetchJobs, refetchInterval: 5000 });
   const retry = useMutation({
@@ -87,7 +89,7 @@ export default function JobsPage() {
                 <TableCell>{job.retry_count}</TableCell>
                 <TableCell>{job.error?.message ?? "-"}</TableCell>
                 <TableCell>{job.error?.correlation_id ?? "-"}</TableCell>
-                <TableCell>{job.created_at}</TableCell>
+                <TableCell>{formatDate(job.created_at)}</TableCell>
                 <TableCell>
                   <Button
                     size="small"

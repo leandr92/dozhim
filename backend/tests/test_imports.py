@@ -1,10 +1,11 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from app.main import app
 
 
 def _headers() -> dict[str, str]:
-    return {"Authorization": "Bearer test-token", "Idempotency-Key": "idem-import"}
+    return {"Authorization": "Bearer test-token", "Idempotency-Key": f"idem-import-{uuid4()}"}
 
 
 def test_import_upload_validation_error_for_empty_csv() -> None:

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from app.main import app
 
@@ -10,7 +11,7 @@ def test_projects_and_metrics_flow() -> None:
     with TestClient(app) as client:
         create = client.post(
             "/api/v1/projects",
-            headers={**AUTH, "Idempotency-Key": "project-create-1"},
+            headers={**AUTH, "Idempotency-Key": f"project-create-{uuid4()}"},
             json={"project_code": "P-001", "project_name": "Pilot", "status": "active"},
         )
         assert create.status_code in (200, 409)
@@ -28,7 +29,7 @@ def test_settings_patch() -> None:
     with TestClient(app) as client:
         update = client.patch(
             "/api/v1/settings",
-            headers={**AUTH, "Idempotency-Key": "settings-1"},
+            headers={**AUTH, "Idempotency-Key": f"settings-{uuid4()}"},
             json={"timezone": "Europe/Moscow", "queue_red_zone": 35},
         )
         assert update.status_code == 200

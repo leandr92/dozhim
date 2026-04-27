@@ -1,10 +1,11 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from app.main import app
 
 
 def _headers(idem: str = "idem-queue") -> dict[str, str]:
-    return {"Authorization": "Bearer test-token", "Idempotency-Key": idem}
+    return {"Authorization": "Bearer test-token", "Idempotency-Key": f"{idem}-{uuid4()}"}
 
 
 def test_operator_queue_flow() -> None:

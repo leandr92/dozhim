@@ -3,4 +3,5 @@ frontend/.next/
 frontend/playwright-report/
 frontend/test-results/
 backend/**/__pycache__/
-frontend/.next/cache/
+frontend/.next/cache/*
+frontend/.next/cache/webpack/client-development/1.pack.gz

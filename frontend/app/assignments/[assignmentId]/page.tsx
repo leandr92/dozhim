@@ -56,6 +56,8 @@ export default function AssignmentDetailsPage({ params }: Props) {
   const [webhookReceived, setWebhookReceived] = useState("true");
   const [lastSavePayload, setLastSavePayload] = useState<{ progress_completion: number; progress_note: string } | null>(null);
   const revision = useMemo(() => assignment?.revision ?? 1, [assignment?.revision]);
+  const formatDate = (value: string | null | undefined) =>
+    value ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value)) : "-";
 
   const extractByJsonPath = (obj: unknown, path: string): unknown => {
     const normalized = path.trim();
@@ -548,6 +550,38 @@ export default function AssignmentDetailsPage({ params }: Props) {
                 </Button>
               ))}
             </Stack>
+          </Paper>
+          <Paper sx={{ p: 2, mt: 2 }}>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Touchpoints / аудит действий
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Когда</TableCell>
+                    <TableCell>Канал</TableCell>
+                    <TableCell>Тип</TableCell>
+                    <TableCell>Actor</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {(query.data?.touchpoints ?? []).map((t) => (
+                    <TableRow key={t.id}>
+                      <TableCell>{formatDate(t.created_at)}</TableCell>
+                      <TableCell>{t.channel}</TableCell>
+                      <TableCell>{t.kind}</TableCell>
+                      <TableCell>{t.actor_id ?? "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {(query.data?.touchpoints ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4}>Нет touchpoints</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Paper>
         </Grid>
       </Grid>
