@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ApiError",
+  "type": "object",
+  "required": [
+    "code",
+    "message",
+    "details",
+    "retryable",
+    "correlation_id"
+  ],
+  "properties": {
+    "code": {
+      "type": "string",
+      "examples": [
+        "CONFLICT_EDIT",
+        "IMPORT_VALIDATION_FAILED",
+        "INTEGRATION_UNAVAILABLE"
+      ]
+    },
+    "message": {
+      "type": "string",
+      "description": "RU-only user-facing message"
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["warning", "error"]
+    }
+  }
+}

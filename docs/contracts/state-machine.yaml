@@ -1,0 +1,86 @@
+version: 1
+entity: task_assignment
+terminal_statuses:
+  - done
+  - cannot_be_done
+  - cancelled
+rules:
+  optimistic_lock: true
+  conflict_error_code: CONFLICT_EDIT
+  first_write_wins: true
+statuses:
+  - new
+  - notified
+  - acknowledged
+  - in_progress
+  - done_pending_check
+  - done
+  - cannot_be_done
+  - overdue
+  - escalated
+  - blocked
+  - cancelled
+transitions:
+  - from: new
+    to: notified
+    trigger: first_message_sent
+  - from: notified
+    to: acknowledged
+    trigger: inbound_ok
+  - from: notified
+    to: in_progress
+    trigger: inbound_date
+  - from: acknowledged
+    to: in_progress
+    trigger: inbound_date
+  - from: [notified, acknowledged, in_progress]
+    to: done_pending_check
+    trigger: inbound_done
+  - from: done_pending_check
+    to: done
+    trigger: verification_passed
+  - from: done_pending_check
+    to: in_progress
+    trigger: verification_failed_business
+  - from: [new, notified, acknowledged, in_progress]
+    to: overdue
+    trigger: deadline_passed
+  - from: overdue
+    to: escalated
+    trigger: scheduler_escalation
+    guard:
+      policy_enabled: true
+  - from: escalated
+    to: escalated
+    trigger: scheduler_escalation_step
+    guard:
+      policy_enabled: true
+  - from: [new, notified, acknowledged, in_progress, overdue, escalated]
+    to: blocked
+    trigger: inbound_block
+  - from: blocked
+    to: in_progress
+    trigger: manual_unblock
+  - from: [new, notified, acknowledged, in_progress, done_pending_check, overdue, escalated, blocked]
+    to: cannot_be_done
+    trigger: manual_finalize_unreachable
+    guard:
+      comment_required: true
+  - from: [new, notified, acknowledged, in_progress, blocked, overdue, escalated]
+    to: cancelled
+    trigger: manual_cancel
+auto_rules:
+  - name: overdue_to_escalated
+    from: overdue
+    to: escalated
+    when: scheduler_tick
+    guard:
+      policy_enabled: true
+  - name: blocked_auto_escalation
+    from: blocked
+    to: escalated
+    when: blocked_duration_gt_14d
+manual_override:
+  enabled: true
+  requires_actor: true
+  requires_touchpoint: true

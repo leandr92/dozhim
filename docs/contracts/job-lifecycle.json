@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "job_statuses": {
+    "non_terminal": ["queued", "running"],
+    "terminal": ["succeeded", "failed", "timed_out", "cancelled"]
+  },
+  "timeouts": {
+    "default_job_timeout_seconds": 3600,
+    "long_running_warning_seconds": 120,
+    "history_retention_hours": 24
+  },
+  "retry_policy": {
+    "max_attempts": 3,
+    "backoff_strategy": "fixed",
+    "backoff_seconds": 30,
+    "jitter_percent": 20,
+    "manual_retry_allowed_after_exhausted": true
+  },
+  "idempotency": {
+    "required_for_mutations": true,
+    "ttl_hours": 24,
+    "same_key_different_payload_error": "409 Conflict"
+  },
+  "cancellation": {
+    "endpoint": "POST /api/v1/jobs/{jobId}/cancel",
+    "requires_compensation_rollback": true
+  },
+  "queue_safety": {
+    "locking_sql": "SELECT ... FOR UPDATE SKIP LOCKED",
+    "lease_model": true,
+    "lease_field": "lease_until"
+  }
+}

@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: Dozhim API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+  schemas:
+    JobAccepted:
+      type: object
+      required: [job_id, status]
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [queued]
+    Error:
+      type: object
+      required: [code, message, details, retryable, correlation_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        retryable:
+          type: boolean
+        correlation_id:
+          type: string
+    PaginatedAssignments:
+      type: object
+      required: [items, page, page_size, total]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        page:
+          type: integer
+        page_size:
+          type: integer
+          default: 50
+        total:
+          type: integer
+    AssignmentPatch:
+      type: object
+      required: [revision]
+      properties:
+        revision:
+          type: integer
+        deadline_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+        progress_completion:
+          type: integer
+          minimum: 0
+          maximum: 100
+        progress_note:
+          type: string
+        next_commitment_date:
+          type: string
+          format: date
+    AssignmentActionRequest:
+      type: object
+      required: [action, revision]
+      properties:
+        action:
+          type: string
+        revision:
+          type: integer
+        payload:
+          type: object
+          additionalProperties: true
+paths:
+  /assignments:
+    get:
+      summary: List assignments
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: project_id
+          in: query
+          schema: { type: string }
+        - name: target_object_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedAssignments"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /assignments/{assignmentId}:
+    patch:
+      summary: Update assignment with optimistic locking
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: assignmentId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentPatch"
+      responses:
+        "200":
+          description: Updated
+        "409":
+          description: CONFLICT_EDIT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /assignments/{assignmentId}/actions:
+    post:
+      summary: Execute assignment action as job
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: assignmentId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentActionRequest"
+      responses:
+        "202":
+          description: Accepted
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAccepted"
+  /campaigns/personalized/upload:
+    post:
+      summary: Upload excel/csv import for campaign
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, dry_run]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                dry_run:
+                  type: boolean
+      responses:
+        "202":
+          description: Accepted
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAccepted"
+        "422":
+          description: IMPORT_VALIDATION_FAILED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /jobs:
+    get:
+      summary: List jobs
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: OK
+  /jobs/{jobId}:
+    get:
+      summary: Get job status
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+  /jobs/{jobId}/cancel:
+    post:
+      summary: Cancel running job
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: Accepted
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAccepted"
