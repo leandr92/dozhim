@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Import, StatusHistory, TargetObject, TaskAssignment
+from app.db.models import Import, OperatorQueueItem, StatusHistory, TargetObject, TaskAssignment
+from app.services.scheduling import next_action_for_new_assignment
 
 
 def _assignment_external_key(project_id: str, target_object_external_key: str) -> str:
@@ -26,11 +27,13 @@ def apply_import_to_domain(db: Session, imp: Import) -> dict[str, int]:
     updated_t = 0
     created_a = 0
     updated_a = 0
+    seen_keys: set[str] = set()
 
     for row in imp.source_rows:
         key = (row.get("Ссылка на проект") or "").strip()
         if not key:
             continue
+        seen_keys.add(key)
         name = (row.get("Проект") or "").strip() or key
         responsible = (row.get("РП") or "").strip()
 
@@ -80,6 +83,7 @@ def apply_import_to_domain(db: Session, imp: Import) -> dict[str, int]:
                 task_code=_task_code(),
                 title=f"Контроль: {name}",
                 status="new",
+                next_action_at=next_action_for_new_assignment(),
                 progress_completion=0,
             )
             db.add(assignment)
@@ -101,6 +105,28 @@ def apply_import_to_domain(db: Session, imp: Import) -> dict[str, int]:
             assignment.updated_at = datetime.utcnow()
             assignment.revision += 1
             updated_a += 1
+
+    missing_in_new_import = (
+        db.query(TargetObject)
+        .filter(TargetObject.project_id == imp.project_id)
+        .all()
+    )
+    for target in missing_in_new_import:
+        if target.target_object_external_key in seen_keys:
+            continue
+        db.add(
+            OperatorQueueItem(
+                assignment_id=None,
+                type="import_warning",
+                reason="target_object_missing_in_new_import",
+                payload={
+                    "target_object_external_key": target.target_object_external_key,
+                    "project_id": imp.project_id,
+                    "import_version": imp.import_version,
+                },
+                status="new",
+            )
+        )
 
     return {
         "created_target_objects": created_t,

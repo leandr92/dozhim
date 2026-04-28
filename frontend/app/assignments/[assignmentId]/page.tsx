@@ -250,6 +250,7 @@ export default function AssignmentDetailsPage({ params }: Props) {
         <Chip label={`Статус: ${assignment.status}`} />
         <Chip label={`Revision: ${assignment.revision}`} />
         <Chip label={`Task: ${assignment.task_code}`} />
+        <Chip label={`Next action: ${formatDate(assignment.next_action_at)}`} />
       </Stack>
       <NotificationStack items={notifications} />
       <Paper sx={{ p: 2 }}>

@@ -1,10 +1,10 @@
 # PRD Acceptance Report (Current Iteration)
 
-Date: 2026-04-27
+Date: 2026-04-28
 
 Scope of this iteration:
-- PRD gap closure without real external integrations (Telegram/Exchange/n8n).
-- Backend + frontend product contours and checklist-driven UX stabilization.
+- Worker-first PRD gap closure with actionable assignment handlers.
+- Scheduler + inbound/email + digest foundation without mandatory n8n dependency.
 
 ## Delivered
 
@@ -20,21 +20,31 @@ Scope of this iteration:
 - Conflict UX actions in assignment details (`Reload latest`, `Retry save`).
 - Touchpoints timeline in assignment details.
 
-3. Campaign/Jobs UX:
+3. Jobs/scheduler/channels:
+- Removed successful no-op for known `assignment_action:*` jobs and implemented real handlers.
+- Added due scheduler based on `next_action_at` in worker `run_once`.
+- Added `channel:email_send` path with SMTP or stub mode and touchpoint logging.
+- Added `POST /inbound/email` endpoint with service token, task code parsing and status transitions.
+- Added `digest:daily` job scheduling and delivery foundation.
+
+4. Campaign/Jobs UX:
 - Manual fallback + immutable message handling preserved.
 - Visual separation for sent vs editable campaign messages.
 - Jobs long-running and timed_out informational notifications.
+- Added owner review queue creation for unknown campaign recipients.
 
-4. Audit/timezone:
+5. Audit/timezone:
 - Audit page stabilized and working.
 - Date/time formatting in key screens (`jobs`, `audit`, assignment touchpoints timeline).
 
-5. Data model/migrations:
+6. Data model/migrations:
 - Added tables: `people`, `task_templates`, `touchpoints`.
 - Extended `task_batches` with runtime result/error/timestamps.
+- Added assignment meeting fields for FR-14 fallback tracking.
 - Added Alembic revisions:
   - `20260427_0008_people_templates_batches.py`
   - `20260427_0009_touchpoints.py`
+  - `20260428_0010_assignment_meeting_fields.py`
 
 ## Test Evidence
 
@@ -55,12 +65,12 @@ Scope of this iteration:
   - Audit screen availability and touchpoints visibility.
 
 - PARTIAL:
-  - Projects/settings advanced UX depth vs full PRD components.
-  - Verification UI/flows are extended but not fully matching all PRD verification contracts.
-  - Some checklist quality items (full accessibility depth, complete RU-only terminology sweep) remain ongoing.
+  - Full n8n workflow orchestration remains optional/deferred in worker-first track.
+  - Verification SQL/file modes are contract-level and still need real external runtime integrations.
+  - Meeting scheduling is fallback-only (`meeting_manual`), no free-busy slot search yet.
 
 - DEFERRED (by scope decision):
   - Real Telegram client API integration.
-  - Real Exchange integration.
-  - n8n orchestration workflows.
+  - Exchange calendar free-busy + invite automation.
+  - Full n8n orchestration workflows (can be added over stable API contracts).
 

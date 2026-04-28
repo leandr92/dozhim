@@ -14,6 +14,9 @@ export default function TemplatesPage() {
   const [name, setName] = useState("");
   const [titleTemplate, setTitleTemplate] = useState("");
   const [deadlineDays, setDeadlineDays] = useState(7);
+  const [reminderCadenceHours, setReminderCadenceHours] = useState(24);
+  const [maxTextTouches, setMaxTextTouches] = useState(3);
+  const [timezone, setTimezone] = useState("Europe/Moscow");
 
   const create = useMutation({
     mutationFn: () =>
@@ -22,13 +25,16 @@ export default function TemplatesPage() {
         title_template: titleTemplate,
         default_deadline_days: deadlineDays,
         verification_policy: { method: "manual" },
-        escalation_policy: { max_touches: 3 },
-        calendar_policy: { timezone: "Europe/Moscow" }
+        escalation_policy: { reminder_cadence_hours: reminderCadenceHours, max_text_touches: maxTextTouches, notify_manager: false },
+        calendar_policy: { timezone, workday_start_local: "10:00", workday_end_local: "18:00", quiet_days: ["saturday", "sunday"] }
       }),
     onSuccess: () => {
       setName("");
       setTitleTemplate("");
       setDeadlineDays(7);
+      setReminderCadenceHours(24);
+      setMaxTextTouches(3);
+      setTimezone("Europe/Moscow");
       queryClient.invalidateQueries({ queryKey: ["templates"] });
     }
   });
@@ -74,6 +80,21 @@ export default function TemplatesPage() {
             value={deadlineDays}
             onChange={(e) => setDeadlineDays(Number(e.target.value))}
           />
+          <TextField
+            size="small"
+            type="number"
+            label="Cadence (часы)"
+            value={reminderCadenceHours}
+            onChange={(e) => setReminderCadenceHours(Number(e.target.value))}
+          />
+          <TextField
+            size="small"
+            type="number"
+            label="Max text touches"
+            value={maxTextTouches}
+            onChange={(e) => setMaxTextTouches(Number(e.target.value))}
+          />
+          <TextField size="small" label="Timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           <Button variant="contained" onClick={() => create.mutate()} disabled={create.isPending || !name.trim() || !titleTemplate.trim()}>
             Создать
           </Button>

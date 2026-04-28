@@ -50,6 +50,7 @@ API base path: `http://127.0.0.1:8000/api/v1`
 - `POST /api/v1/jobs/run-once` (dev worker tick)
 - `POST /api/v1/campaigns/{campaign_id}/messages/{message_id}/manual-sent-flag`
 - `GET /api/v1/audit-logs`
+- `POST /api/v1/inbound/email` (service-to-service inbound parser)
 
 ### Auth and mutation headers
 
@@ -59,6 +60,17 @@ API base path: `http://127.0.0.1:8000/api/v1`
 - HTTP verification adapter allowlist is controlled by `DOZHIM_VERIFICATION_HTTP_ALLOWED_HOSTS` (comma-separated, default: `127.0.0.1,localhost`).
 - HTTP verification allowed methods are configured with `DOZHIM_VERIFICATION_HTTP_ALLOWED_METHODS` (default: `GET,POST`), and timeout is capped by `DOZHIM_VERIFICATION_HTTP_MAX_TIMEOUT_SECONDS` (default: `10.0`).
 - HTTP verification also supports business condition checks by response JSON path (`response_json_path`, e.g. `$.result.status`) and expected JSON value (`expected_json_value`).
+- Inbound integration endpoint uses `X-Service-Token` and validates it against `DOZHIM_INBOUND_SERVICE_TOKEN`.
+- SMTP delivery is controlled by `DOZHIM_SMTP_*` variables (`HOST`, `PORT`, `USERNAME`, `PASSWORD`, `FROM_EMAIL`, `USE_TLS`).
+- `DOZHIM_CHANNEL_STUB_MODE=true` keeps channel actions in stub mode for local development.
+
+### Architecture decisions (current MVP track)
+
+- **State owner**: backend + PostgreSQL remain the single source of truth for assignment states.
+- **Orchestration**: current release track is **worker-first** (`run_worker.py`) with due-scheduler and digest scheduling in backend service layer.
+- **n8n compatibility**: n8n integration is deferred; external orchestration can call the same API contracts later without changing core state management.
+- **FR-14 meetings**: until Exchange calendar automation is implemented, `schedule_meeting` produces `meeting_manual` items in operator queue.
+- **Channel rollout**: email channel is implemented first; Telegram MTProto remains a separate optional adapter phase.
 
 ### Database migrations
 

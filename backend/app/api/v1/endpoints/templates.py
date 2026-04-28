@@ -63,8 +63,8 @@ def create_template(
         description=payload.description,
         default_deadline_days=payload.default_deadline_days,
         verification_policy=payload.verification_policy,
-        escalation_policy=payload.escalation_policy,
-        calendar_policy=payload.calendar_policy,
+        escalation_policy=payload.escalation_policy.model_dump(),
+        calendar_policy=payload.calendar_policy.model_dump(),
         status="active",
     )
     db.add(template)
@@ -88,6 +88,10 @@ def patch_template(
     if template is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
     updates = payload.model_dump(exclude_unset=True)
+    if "escalation_policy" in updates and updates["escalation_policy"] is not None:
+        updates["escalation_policy"] = updates["escalation_policy"].model_dump()
+    if "calendar_policy" in updates and updates["calendar_policy"] is not None:
+        updates["calendar_policy"] = updates["calendar_policy"].model_dump()
     for field, value in updates.items():
         setattr(template, field, value)
     template.updated_at = datetime.utcnow()

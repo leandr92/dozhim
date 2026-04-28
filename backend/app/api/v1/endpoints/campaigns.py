@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Respo
 from sqlalchemy.orm import Session
 
 from app.api.deps.auth import require_bearer_token, require_roles
-from app.db.models import Campaign, CampaignMessage, Import, Job
+from app.db.models import Campaign, CampaignMessage, Import, Job, OperatorQueueItem, Person
 from app.db.session import get_db
 from app.schemas.common import JobAccepted
 from app.services.imports import read_rows, validate_and_diff
@@ -166,13 +166,25 @@ async def upload_campaign_file(
         key = (row.get("Ссылка на проект") or "").strip()
         project_name = (row.get("Проект") or "").strip()
         recipient = (row.get("РП") or "").strip()
+        owner = db.query(Person).filter(Person.email == recipient).first()
+        message_status = "draft" if owner else "review_required"
+        if not owner:
+            db.add(
+                OperatorQueueItem(
+                    assignment_id=None,
+                    type="owner_review",
+                    reason="owner_not_found",
+                    payload={"email": recipient, "target_object_external_key": key, "campaign_id": campaign.id},
+                    status="new",
+                )
+            )
         db.add(
             CampaignMessage(
                 campaign_id=campaign.id,
                 to_email=recipient,
                 subject=f"[Dozhim] Актуализация: {project_name}",
                 body=f"Объект: {project_name}\nКлюч: {key}",
-                status="draft",
+                status=message_status,
             )
         )
 

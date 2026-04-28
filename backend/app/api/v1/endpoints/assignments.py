@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps.auth import require_bearer_token, require_roles
-from app.db.models import CampaignMessage, Evidence, Job, OperatorQueueItem, Project, Revision, StatusHistory, TargetObject, TaskAssignment, Touchpoint
+from app.db.models import AppSetting, CampaignMessage, Evidence, Job, OperatorQueueItem, Project, Revision, StatusHistory, TargetObject, TaskAssignment, Touchpoint
 from app.db.session import get_db
 from app.schemas.assignments import AssignmentActionRequest, AssignmentCreate, AssignmentPatch, AssignmentRevert
 from app.schemas.common import JobAccepted
 from app.services.jobs import new_job_id as generate_job_id
+from app.services.scheduling import next_action_after_touchpoint, next_action_for_new_assignment
 from app.services.state_machine import assert_transition
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -77,6 +78,7 @@ def list_assignments(
                 "project_id": row.project_id,
                 "target_object_id": row.target_object_id,
                 "deadline_at": row.deadline_at,
+                "next_action_at": row.next_action_at,
                 "revision": row.revision,
             }
             for row in rows
@@ -128,6 +130,8 @@ def create_assignment(
         db.add(target)
         db.flush()
 
+    settings_row = db.get(AppSetting, "global")
+    settings_value = settings_row.value if settings_row else {}
     assignment = TaskAssignment(
         external_key=_manual_assignment_external_key(payload.project_id, ext_key),
         project_id=payload.project_id,
@@ -136,6 +140,10 @@ def create_assignment(
         title=payload.title.strip(),
         status="new",
         deadline_at=payload.deadline_at,
+        next_action_at=next_action_for_new_assignment(
+            quiet_days=settings_value.get("quiet_days") or ["saturday", "sunday"],
+            holiday_dates=settings_value.get("holiday_dates") or [],
+        ),
         progress_completion=0,
     )
     db.add(assignment)
@@ -258,6 +266,14 @@ def patch_assignment(
         assignment.progress_note = payload.progress_note
     if payload.next_commitment_date is not None:
         assignment.next_commitment_date = payload.next_commitment_date
+    if payload.status is not None or payload.deadline_at is not None:
+        settings_row = db.get(AppSetting, "global")
+        settings_value = settings_row.value if settings_row else {}
+        assignment.next_action_at = next_action_after_touchpoint(
+            cadence_hours=24,
+            quiet_days=settings_value.get("quiet_days") or ["saturday", "sunday"],
+            holiday_dates=settings_value.get("holiday_dates") or [],
+        )
 
     assignment.revision += 1
     assignment.updated_at = datetime.utcnow()
@@ -401,6 +417,7 @@ def get_assignment_details(
             "project_id": assignment.project_id,
             "target_object_id": assignment.target_object_id,
             "deadline_at": assignment.deadline_at,
+            "next_action_at": assignment.next_action_at,
             "progress_completion": assignment.progress_completion,
             "progress_note": assignment.progress_note,
             "next_commitment_date": assignment.next_commitment_date,

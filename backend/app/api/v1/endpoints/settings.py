@@ -14,6 +14,9 @@ DEFAULT_SETTINGS = {
     "quiet_days": ["saturday", "sunday"],
     "timezone": "Europe/Moscow",
     "queue_red_zone": 30,
+    "holiday_dates": [],
+    "digest_hour_utc": 6,
+    "digest_recipients": [],
 }
 
 

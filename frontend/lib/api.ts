@@ -78,6 +78,7 @@ export type Assignment = {
   target_object_id: string;
   revision: number;
   deadline_at: string | null;
+  next_action_at?: string | null;
 };
 
 export type JobsResponse = {
@@ -172,6 +173,7 @@ export type AssignmentDetailsResponse = {
     project_id: string;
     target_object_id: string;
     deadline_at: string | null;
+    next_action_at?: string | null;
     progress_completion: number;
     progress_note: string | null;
     next_commitment_date: string | null;
@@ -477,6 +479,9 @@ export type SettingsResponse = {
   quiet_days: string[];
   timezone: string;
   queue_red_zone: number;
+  holiday_dates?: string[];
+  digest_hour_utc?: number;
+  digest_recipients?: string[];
 };
 
 export async function fetchSettings(): Promise<SettingsResponse> {
